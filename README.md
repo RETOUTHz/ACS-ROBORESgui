@@ -13,7 +13,7 @@ sudo npm install --global yarn
 ```
 
 ```bash
-git clone https://github.com/NonStopBle/iRAP-Minirescue-GUI.git
+git clone https://github.com/RETOUTHz/ACS-ROBORESui.git
 ```
 
 ```bash
