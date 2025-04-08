@@ -1,5 +1,6 @@
-import React, { Component } from 'react';
+import React, { Component, ChangeEvent, KeyboardEvent } from 'react';
 
+import { Form } from 'react-bootstrap';
 import ROSLIB from 'roslib';
 
 import logo from './image/logo.png';
@@ -22,236 +23,266 @@ import './index.css';
 import FlipperVisualization from '../../components/FlipperVisualization';
 
 
-// /usb_cam/image_raw/compressed
-
-interface IProps { }
-
+interface IProps {}
 interface IState {
+  Button_A_Flag: boolean;
+  A_Value: number;
+  B_value: number;
+  C_value: number;
+  D_value: number;
+  E_value: number;
+  F_value: number;
+
+  A_ROS_Value: number;
+  B_ROS_Value: number;
+  readROSInt16: number;
   ros: ROSLIB.Ros;
-  robotConnection: boolean
-  joyConnection: boolean
-  cameraA: string
-  attachState: boolean
-  detection: boolean
-  startButton: boolean
-  readRobotFlipperAngle: number
-  readRobotSpeedLeft: number
-  readRobotSpeedRight: number
-  readRobotPitchAngle : number
-  previousUpdate : number;
+  didMounted: boolean;
 }
 
-class App extends Component<IProps, IState> {
+const initialROS = (url: string) => {
+  const ros = new ROSLIB.Ros({ url });
+  return ros;
+};
 
+class App extends Component<IProps, IState> {
   constructor(props: IProps) {
-    super(props)
+    super(props);
 
     this.state = {
-      ros: initROSMasterURI(configs.ROSMasterURL.url),
-      robotConnection: false,
-      cameraA: "",
-      attachState: false,
-      joyConnection: false,
-      startButton: false,
-      detection: false,
-      readRobotFlipperAngle: 0,
-      readRobotSpeedRight: 0,
-      readRobotSpeedLeft: 0,
-      readRobotPitchAngle : 0,
-      previousUpdate : 0,
-    }
+      readROSInt16: 0,
+      ros: initialROS('ws://10.42.2.111:9090'),
+      Button_A_Flag: false,
+      A_Value: 0,
+      B_value: 0,
+      C_value: 0,
+      D_value: 0,
+      E_value: 0,
+      F_value: 0,
+      A_ROS_Value: 0,
+      B_ROS_Value: 0,
+      didMounted: false,
+    };
   }
 
-  // subscribeCameraA(ros: ROSLIB.Ros, topicName: string) {
-  //   const { cameraA } = this.state;
+  handleInputCChange = (event: ChangeEvent<HTMLInputElement>) => {
+    this.SubscribeInt16(this.state.ros, '/motor_jetson')
+  };
 
-  //   const imageTopic = new ROSLIB.Topic({
-  //     ros: ros,
-  //     name: topicName, // adjust the topic name based on your setup
-  //     messageType: 'sensor_msgs/CompressedImage',
-  //   });
+  onButtonAClickHandle = () => {
+    this.setState({
+      Button_A_Flag: !this.state.Button_A_Flag
+    });
 
-  //   imageTopic.subscribe((message: ROSLIB.Message) => {
-  //     const compressedImageMessage = message as ROSLIB.Message & { format: string; data: string };
-  //     const format = compressedImageMessage.format;
-  //     const imageData = compressedImageMessage.data;
+    const { ros } = this.state;
+    this.PublishInt16(ros, "/gui/buttonCommand", this.state.A_Value)
+    console.log("onButtonClickHandle : ", this.state.Button_A_Flag)
+  }
 
-  //     const imageUrl = `data:image/${format};base64,${imageData}`;
+  onButtonBClickHandle = () => {
+    // Add button B logic here if needed
+  }
 
-
-  //     this.setState({ cameraA: imageUrl });
-  //   });
-  // }
-
-  subscribeRobot(ros: ROSLIB.Ros, topicName: string) {
-    const { cameraA } = this.state;
-
+  SubscribeInt16 = (ros: ROSLIB.Ros, topicName: string) => {
     const robotReadTopic = new ROSLIB.Topic({
       ros: ros,
-      name: topicName, // adjust the topic name based on your setup
-      messageType: 'std_msgs/Float32MultiArray',
+      name: topicName,
+      messageType: 'std_msgs/Int16',
     });
 
     robotReadTopic.subscribe((message: ROSLIB.Message) => {
-      const data = message as ROSLIB.Message &
-      {
-        layout: {
-          dim: [],
-          data_offset: 0,
-        },
-        data: [0,0,0,0],
+      const messageResponse = message as ROSLIB.Message & {
+        data: number,
       };
 
-      let flipperAngle = Math.floor(data.data[2] * (360/140)  % 360) > 180 ?  Math.floor(data.data[2] * (360/140)  % 360) - 360 : Math.floor(data.data[2] * (360/140)  % 360)
-
-      this.setState({readRobotSpeedLeft : Math.floor(data.data[0] / 35.255) , readRobotSpeedRight : Math.floor(data.data[1] / 35.255)} )
-      this.setState({readRobotPitchAngle : data.data[3]})
-
-      if(flipperAngle - this.state.previousUpdate > 10){
-        console.log("updated")
-        this.setState({readRobotFlipperAngle : flipperAngle})
+      if (topicName === '/Tweezers_jetson') {
+        this.setState({ A_Value: messageResponse.data });
+      } else if (topicName === '/motor_jetson') {
+        this.setState({ C_value: messageResponse.data });
+      } else if (topicName === '/servo2_jetson') {
+        this.setState({ D_value: messageResponse.data });
+      } else if (topicName === '/servo1_jetson') {
+        this.setState({ E_value: messageResponse.data });
+      } else if (topicName === '/motor2_jetson') {
+        this.setState({ F_value: messageResponse.data });
       }
-      this.setState({previousUpdate : flipperAngle})
-      // const format = compressedImageMessage.format;
-      // const imageData = compressedImageMessage.data;
-
-      // const imageUrl = `data:image/${format};base64,${imageData}`;
-
-
-      // this.setState({ cameraA: imageUrl });
     });
   }
 
-  componentDidMount = () => {
-    const { ros } = this.state
-    console.log("did")
-    ros.on('connection', () => {
-      console.log("ROS : Connected to ROS Master : ", configs.ROSMasterURL.url);
-      this.subscribeRobot(ros , '/motor_array')
-      this.setState({ robotConnection: true })
-    })
+  PublishInt16 = (ros: ROSLIB.Ros, topicName: string, value: number) => {
+    const joypadRosTopic = new ROSLIB.Topic({
+      ros: ros,
+      name: topicName, // Adjust the topic name based on your setup, e.g., '/your_joy_topic'
+      messageType: 'std_msgs/Int16', // Adjust the message type based on your setup
+    });
 
-    ros.on('close', () => {
-      this.setState({ robotConnection: false })
-    })
-    ros.on('error', () => {
-      console.log("ROS : Can't connect to ros master : ", configs.ROSMasterURL.url);
-      this.setState({ robotConnection: false })
-    })
+    const Int16Message = new ROSLIB.Message({
+      data: value,
+    });
+
+    joypadRosTopic.publish(Int16Message)
+  }
+
+  onROSConnection = () => {
+    console.log("connected !")
+    this.SubscribeInt16(this.state.ros, '/Tweezers_jetson')
+    this.SubscribeInt16(this.state.ros, '/motor_jetson')
+    this.SubscribeInt16(this.state.ros, '/servo2_jetson')
+    this.SubscribeInt16(this.state.ros, '/servo1_jetson')
+    this.SubscribeInt16(this.state.ros, '/motor2_jetson')
+  }
+
+  onROSError = () => {
+    console.log("error")
+  }
+
+  onROSClose = () => {
+    console.log("closed")
+  }
+
+  componentDidMount = () => {
+    const { ros } = this.state;
+    ros.on('connection', this.onROSConnection)
+    ros.on('error', this.onROSError)
+    ros.on('close', this.onROSClose)
   }
 
   componentWillUnmount = () => {
-    const { ros } = this.state
-    // ros.close();
-    // this.setState({attachState : true})
-    // console.log("umount")
+    if (this.state.didMounted) {
+      this.state.ros.close()
+    }
   }
 
-  alignmentStyle: React.CSSProperties = {
-    // transform: `rotate(${flipImageDeg ? flipImageDeg : 180}deg)`,
-    paddingLeft: 0,
-    paddingRight: 0,
-    position: 'relative',
-    display: 'flex',
-    // transition: 'transform 0.5s ease', // Add a smooth transition for a better visual effect
+  handleInputBChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!isNaN(Number(event.target.value))) {
+      this.setState({
+        B_value: Number(event.target.value)
+      })
+    }
+  }
+
+  handleInputBKeyPress = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      const { ros } = this.state;
+      this.PublishInt16(ros, "/right_servo_cmd", this.state.B_value)
+      console.log("ROS_B", this.state.B_value)
+    }
   };
 
   render() {
-
     return (
+      <Container fluid className="App">
+        {/* Camera Views */}
+        <Row className="mb-4 justify-content-center">
+        <Col xs={12} md={4} className="d-flex justify-content-center">
+            <div className="camera-view">
+              <ImageViewer
+                ros={this.state.ros}
+                ImageCompressedTopic={'/camera2/image_raw/compressed'}
+                width={''}
+                height={''}
+                rotate={180}
+                hidden={false}
+              />
+              <label>Rotate Camera:</label>
+              <h6 >rosrun usb_cam usb_cam_node _video_device:=/dev/video0 _framerate:=30 เปิดกล้องjetson</h6>
+            </div>
+          </Col>
+          <Col xs={12} md={4} className="d-flex justify-content-center">
+            <div className="camera-view">
+              <ImageViewer
+                ros={this.state.ros}
+                ImageCompressedTopic={'/camera2/image_raw/compressed'}
+                width={''}
+                height={''}
+                rotate={0}
+                hidden={false}
+              />
+              <label>Front Camera:</label>
+              <h6 >rosrun usb_cam usb_cam_node _video_device:=/dev/video0 _framerate:=30 เปิดกล้องjetson</h6>
+            </div>
+          </Col>
+          <Col xs={12} md={4} className="d-flex justify-content-center">
+            <div className="camera-view">
+              <ImageViewer
+                ros={this.state.ros}
+                ImageCompressedTopic={'/usb_cam/image_raw/compressed'}
+                width={''}
+                height={''}
+                rotate={0}
+                hidden={false}
+              />
+              <label>Rotate Camera:</label>
+              <h6 >rosrun usb_cam usb_cam_node _video_device:=/dev/video0 _framerate:=30 เปิดกล้องjetson</h6>
+            </div>
+          </Col>
+        </Row>
+     
 
-      <body className='body'>
-        <GamepadComponent ros={this.state.ros} joypadTopicName={'/gui/output/robot_control'} onJoyStickConnection={(connection) => {
-          this.setState({ joyConnection: connection });
-        }} joyEnable={this.state.startButton} />
-        <div className="top">
-          <div className="left">
-            <div className="logo">
-              <img src={logo} alt="" />
-            </div>
-          </div>
-          <div className="right">
-            <div className="ping">
-              {/* <img src={wifi_white} alt="" /> */}
-              {/* <h3>100 ms</h3> */}
-            </div>
-          </div>
-
-        </div>
-        <div className="center">
-          <div className="camerabox">
-            <div className="camera1">
-              <ImageViewer ros={this.state.ros} ImageCompressedTopic={'/usb_cam/image_raw/compressed'} height={'100%'} width={'95%'} rotate={180} hidden={false}></ImageViewer>
-            </div>
-            <div className="camera2">
-              <ImageViewer ros={this.state.ros} ImageCompressedTopic={'/usb_cam/image_raw/compressed'} height={'100%'} width={'95%'} rotate={180} hidden={false}></ImageViewer>
-            </div>
-          </div>
-        </div>
-        <div className="bottom">
-          <div className="bottom-flag">
-            <div className="bleft">
-              <div className="boxcv">
-                <div className="cv">
-                  <ImageViewer ros={this.state.ros} ImageCompressedTopic={'/detect_marker/image_raw/compressed'} height={'100%'} width={'95%'} rotate={180} hidden={!this.state.detection} ></ImageViewer>
-                </div>
-              </div>
-            </div>
-            <div className="bcenter">
-              <div className="boxflipper">
-                <div className="flipperState">
-                  <FlipperVisualization flipperDegree={this.state.readRobotFlipperAngle} pitchDegree={this.state.readRobotPitchAngle}></FlipperVisualization>
-                </div>
-              </div>
-            </div>
-            <div className="bright">
-              <div className="statusbox">
-                <div className="joybox">
-                  <div className="joyflag">
-                    <img src={joy} />
-                  </div>
-                  <h2>Joy Status: {this.state.joyConnection ? "Connected" : "Disconnected"}</h2>
-                </div>
-                <div className="robotbox">
-                  <div className="robotflag">
-                    <img src={connect} />
-                  </div>
-                  <h2>Robot Status: {this.state.robotConnection ? "Connected" : "Disconnected"}</h2>
-                </div>
-              </div>
-              <div className="startbox">
-                {
-                  !this.state.startButton ? <Button variant="primary" onClick={() => {
-                    this.setState({ startButton: !this.state.startButton })
-                  }}>
-                    {!this.state.startButton ? "Start" : "Stop"}
-                  </Button> : <Button variant="danger" onClick={() => {
-                    this.setState({ startButton: !this.state.startButton })
-                  }}>
-                    {!this.state.startButton ? "Start" : "Stop"}
-                  </Button>
-                }
-
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="statusBar">
-          <div className="box-button">
-            <Button variant="primary" onClick={() => {
-              this.setState({ detection: !this.state.detection })
-            }}>
-              {this.state.detection ? "Detection Off" : "Detection On"}
+                {/* Work Section */}
+                <Row className="mb-4 justify-content-center">
+          <Col xs={12} md={6} className="d-flex justify-content-center">
+            <Button
+              onClick={this.onButtonAClickHandle}
+              variant={!this.state.Button_A_Flag ? 'primary' : 'warning'}
+              className="start-button"
+            >
+              Start
             </Button>
-          </div>
-          <div className="flipperLabel">
-            <h2>Flipper: {this.state.readRobotFlipperAngle}°</h2>
-          </div>
-          <div className="speedbox">
-            <h2>SpeedL: {this.state.readRobotSpeedLeft} rpm , SpeedR: {this.state.readRobotSpeedRight} rpm</h2>
-          </div>
-        </div>
-      </body>
+          </Col>
+        </Row>
+
+        <Row className="mb-4 justify-content-center">
+          <Col xs={12} md={6} className="d-flex justify-content-center">
+          <div className="gripper-section w-100">
+            <h4>Move</h4>
+              <Form.Group controlId="walk">
+                <label>Walk:</label>
+                <input type="text" value={this.state.C_value} readOnly className="form-control" />
+              </Form.Group>
+              <Form.Group controlId="turn">
+                <label>Turn:</label>
+                <input type="text" value={this.state.F_value} readOnly className="form-control" />
+              </Form.Group>
+            </div>
+          </Col>
+        </Row>
+                {/* Gripper Section */}
+        <Row className="justify-content-center">
+          <Col xs={12} md={6} className="d-flex justify-content-center">
+            <div className="gripper-section w-100">
+              <h4>Gripper</h4>
+              <Form.Group controlId="tweezers">
+                <label>Tweezers:</label>
+                <input type="text" value={this.state.A_Value} readOnly className="form-control" />
+              </Form.Group>
+              <Form.Group controlId="arm1">
+                <label>Arm 1:</label>
+                <input type="text" value={this.state.E_value} readOnly className="form-control" />
+              </Form.Group>
+              <Form.Group controlId="arm2">
+                <label>Arm 2:</label>
+                <input type="text" value={this.state.D_value} readOnly className="form-control" />
+              </Form.Group>
+            </div>
+          </Col>
+        </Row>
+
+        {/* Gamepad Section */}
+        <Row className="mb-4 justify-content-center">
+          <Col xs={12} md={6} className="d-flex justify-content-center">
+            <GamepadComponent 
+              ros={this.state.ros} 
+              joypadTopicName={'/gui/output/robot_control'} 
+              onJoyStickConnection={(connection) => {
+                // You can handle joystick connection logic here if needed
+                console.log('Gamepad connection status:', connection);
+              }} 
+              joyEnable={this.state.Button_A_Flag} 
+            />
+          </Col>
+        </Row>
+      </Container>
     );
   }
 }
